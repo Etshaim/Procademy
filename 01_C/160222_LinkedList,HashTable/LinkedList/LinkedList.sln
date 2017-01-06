@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.31101.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LinkedList", "LinkedList\LinkedList.vcxproj", "{F2E12B6F-293D-4F03-BE0E-193F2E98DA38}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AccountManager", "AccountManager\AccountManager.vcxproj", "{0F6BC5B1-217E-4521-8300-2690BDE4C2FA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F2E12B6F-293D-4F03-BE0E-193F2E98DA38}.Debug|Win32.ActiveCfg = Debug|Win32
+		{F2E12B6F-293D-4F03-BE0E-193F2E98DA38}.Debug|Win32.Build.0 = Debug|Win32
+		{F2E12B6F-293D-4F03-BE0E-193F2E98DA38}.Release|Win32.ActiveCfg = Release|Win32
+		{F2E12B6F-293D-4F03-BE0E-193F2E98DA38}.Release|Win32.Build.0 = Release|Win32
+		{0F6BC5B1-217E-4521-8300-2690BDE4C2FA}.Debug|Win32.ActiveCfg = Debug|Win32
+		{0F6BC5B1-217E-4521-8300-2690BDE4C2FA}.Debug|Win32.Build.0 = Debug|Win32
+		{0F6BC5B1-217E-4521-8300-2690BDE4C2FA}.Release|Win32.ActiveCfg = Release|Win32
+		{0F6BC5B1-217E-4521-8300-2690BDE4C2FA}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
