@@ -1,4 +1,0 @@
-﻿  main.cpp
-c:\users\user\desktop\chat_server\chat_server\main.cpp(184): warning C4838: 'int'에서 'DWORD'(으)로의 변환에는 축소 변환이 필요합니다.
-  Chat_Server.vcxproj -> C:\Users\user\Desktop\Chat_Server\Debug\Chat_Server.exe
-  Chat_Server.vcxproj -> C:\Users\user\Desktop\Chat_Server\Debug\Chat_Server.pdb (Full PDB)
