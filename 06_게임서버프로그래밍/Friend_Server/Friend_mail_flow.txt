@@ -1,0 +1,14 @@
+-------------------------------
+흐름
+-------------------------------
+NewworkInitial()
+
+LoadData()
+
+while(1)
+{
+	NetworkProcess()
+	ControlMode()
+}
+
+SaveData()
