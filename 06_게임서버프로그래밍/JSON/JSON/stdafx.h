@@ -9,8 +9,7 @@
 
 #include <stdio.h>
 #include <tchar.h>
-#include <windows.h>
-#include <minwindef.h>
+#include <Windows.h>
 
 
 
