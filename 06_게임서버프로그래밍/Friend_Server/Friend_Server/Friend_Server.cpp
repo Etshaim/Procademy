@@ -1,13 +1,12 @@
 #include "stdafx.h"
 #include "Friend_Server.h"
-#include <map>
 
 using namespace std;
 
-extern	UINT64		g_AccountIncrement				= 1;
-extern	UINT64		g_FriendIncrement				= 1;
-extern	UINT64		g_FriendRequestIncrement		= 1;
-extern	SOCKET		g_ListenSocket					= INVALID_SOCKET;
+extern	UINT64		g_AccountIncrement;
+extern	UINT64		g_FriendIncrement;
+extern	UINT64		g_FriendRequestIncrement;
+extern	SOCKET		g_ListenSocket;
 
 extern	map<SOCKET, st_CLIENT*>						 g_ClientMap;     // key값을 소켓으로 쓰는 이유?
 extern	map<UINT64, st_DATA_ACCOUNT*>				 g_AccountMap;
@@ -24,7 +23,7 @@ extern	multimap<UINT64, UINT64>                     g_FriendRequestIndex_From;
 extern	multimap<UINT64, UINT64>                     g_FriendRequestIndex_To;
 
 
-BOOL NewworkInitial(void)
+BOOL NetworkInitial(void)
 {
 	// 윈속 초기화
 	WSADATA wsa;
@@ -74,7 +73,7 @@ void NetworkProcess(void)
 {
 	st_CLIENT *pClient;
 
-	DWORD	userTable_NO[FD_SETSIZE] = { -1, };
+	DWORD	userTable_NO[FD_SETSIZE] = { (DWORD)-1, };
 	SOCKET	userTable_SOCKET[FD_SETSIZE] = { INVALID_SOCKET };
 
 	int		iSocketCount = 0;	// 64명 되면 호출
@@ -88,7 +87,7 @@ void NetworkProcess(void)
 	memset(userTable_NO, -1, FD_SETSIZE);
 	memset(userTable_SOCKET, INVALID_SOCKET, FD_SETSIZE);
 
-
+	 
 	// 첫 번째 인덱스에는 listen socket 넣을 것임
 	FD_SET(g_ListenSocket, &readSet);
 	userTable_NO[iSocketCount] = 0;
@@ -103,7 +102,7 @@ void NetworkProcess(void)
 	for (iter = g_ClientMap.begin(); iter != g_ClientMap.end(); ++iter)
 	{
 		pClient = (*iter).second;
-		userTable_NO[iSocketCount]		= pClient->pAccount->AccountNo;
+		userTable_NO[iSocketCount]		= (DWORD)pClient->pAccount->AccountNo;
 		userTable_SOCKET[iSocketCount]	= pClient->sock;
 
 		FD_SET(pClient->sock, &readSet);
@@ -136,7 +135,64 @@ void NetworkProcess(void)
 
 void SelectSocket(DWORD * dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, FD_SET * pWriteSet)
 {
+	timeval Time;
+	int		iRetVal;
+	int		iCount;
 
+	//-----------------------------------------------------
+	// select 함수의 대기 시간
+	//-----------------------------------------------------
+	Time.tv_sec		= 0;
+	Time.tv_usec	= 0;
+
+
+	// select 호출
+	iRetVal = select(0, pReadSet, pWriteSet, nullptr, &Time);
+
+
+	//-----------------------------------------------------
+	// iRetVal 값이 0 이상이면 반응이 있는 것
+	//-----------------------------------------------------
+	if ( 0 < iRetVal)
+	{
+		// 테이블 순회하면서 FD_ISSET 으로 rset wset 검사
+		for (iCount = 0; iCount < FD_SETSIZE; ++iCount)
+		{
+			if (INVALID_SOCKET == pTableSocket[iCount])
+			{
+				continue;
+			}
+		}
+
+		// rset 반응 있으면 
+		if (FD_ISSET(pTableSocket[iCount], pReadSet))
+		{
+			// listen 소켓이 반응했으면 accept
+			if (0 == dwpTableNO[iCount])
+			{
+
+			}
+			// 아니면 패킷 프로세스 처리
+			else
+			{
+
+			}
+		}
+		
+
+		// wset 반응 있으면
+		// 패킷 보내기
+	}
+	else if (SOCKET_ERROR == iRetVal)
+	{
+		wprintf(L"SelectSocket()");
+	}
+	
+
+	
+
+	
+	
 }
 
 void err_quit(WCHAR * msg)
@@ -170,13 +226,63 @@ void err_display(WCHAR * msg)
 	exit(1);
 }
 
+void CreateAccount(WCHAR * szNickName)
+{
+	st_DATA_ACCOUNT *pAccount = new st_DATA_ACCOUNT;
+
+	wcscpy_s(pAccount->szID, szNickName);
+	pAccount->AccountNo = g_AccountIncrement;
+	g_AccountIncrement++;
+
+	g_AccountMap.insert( pair<UINT64, st_DATA_ACCOUNT*>( pAccount->AccountNo, pAccount ) );
+}
+
+BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
+{
+	wprintf(L"PacketRecv [UserNO:%d][Type:%d]\n", pClient->pAccount->AccountNo, wMsgType);
+
+	switch (wMsgType)
+	{
+	case df_REQ_ACCOUNT_ADD:
+		return netPacket_ReqAccountAdd(pClient, pPacket);
+	
+	case df_REQ_LOGIN:
+		return netPacket_ReqLogin(pClient, pPacket);
+
+	case df_REQ_ACCOUNT_LIST:
+		return netPacket_ReqAccountList(pClient, pPacket);
+
+	case df_REQ_FRIEND_LIST:
+		return netPacket_ReqFriendList(pClient, pPacket);
+
+	case df_REQ_FRIEND_REQUEST_LIST:
+		return netPacket_ReqFriendList_Request(pClient, pPacket);
+
+	case df_REQ_FRIEND_REPLY_LIST:
+		return netPacket_ReqFriendList_Reply(pClient, pPacket);
+
+	case df_REQ_FRIEND_REMOVE:
+		return netPacket_ReqFriendRemove(pClient, pPacket);
+
+	case df_REQ_FRIEND_REQUEST:
+		return netPacket_ReqFriendRequest(pClient, pPacket);
+
+	case df_REQ_FRIEND_CANCEL:
+		return netPacket_ReqFriendCancel(pClient, pPacket);
+
+	case df_REQ_FRIEND_DENY:
+		return netPacket_ReqFriendDeny(pClient, pPacket);
+
+	case df_REQ_FRIEND_AGREE: 
+		netPacket_ReqFriendAgree(pClient, pPacket);
+	}
+	return TRUE;
+}
 
 BOOL newPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
 	return 0;
 }
-
-
 
 BOOL netPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer * pPacket)
 {
@@ -193,7 +299,7 @@ BOOL netPacket_ReqLogin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 	return 0;
 }
 
-BOOL netPacket_ReqMemberList(st_CLIENT * pClient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqAccountList(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
 	return 0;
 }

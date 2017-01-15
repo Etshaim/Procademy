@@ -5,6 +5,13 @@
 
 class CProtocolBuffer;
 
+struct st_DATA_ACCOUNT
+{
+	UINT64	AccountNo;
+	WCHAR	szID[dfNICK_MAX_LEN];
+
+};
+
 // 클라이언트 구조체
 struct st_CLIENT
 {
@@ -15,14 +22,6 @@ struct st_CLIENT
 	CStreamSQ		RecvQ;
 
 	st_DATA_ACCOUNT	*pAccount;
-
-	//WCHAR			szNickName[dfNICK_MAX_LEN];
-};
-
-struct st_DATA_ACCOUNT
-{
-	UINT64	AccountNo;
-	WCHAR	szID[dfNICK_MAX_LEN];
 };
 
 struct st_DATA_FRIEND
@@ -42,7 +41,7 @@ struct st_DATA_FRIEND_REQUEST
 };
 
 // 네트워크 초기화
-BOOL	NewworkInitial(void);
+BOOL	NetworkInitial(void);
 void	NetworkProcess(void);
 void	SelectSocket(DWORD *dwpTableNO, SOCKET *pTableSocket, FD_SET *pReadSet, FD_SET *pWriteSet);
 
@@ -50,10 +49,16 @@ void	SelectSocket(DWORD *dwpTableNO, SOCKET *pTableSocket, FD_SET *pReadSet, FD_
 void	err_quit(WCHAR *msg);
 void	err_display(WCHAR *msg);
 
+// 계정 생성
+void	CreateAccount(WCHAR *szNickName);
+
+// 패킷 프로세스
+BOOL	PacketProc(st_CLIENT *pClient, WORD wMsgType, CProtocolBuffer *pPacket);
+
 // Request
 BOOL 	netPacket_ReqAccountAdd(st_CLIENT *pClient, CProtocolBuffer *pPacket);				//회원 가입		 요청(REQ)
 BOOL	netPacket_ReqLogin(st_CLIENT *pClient, CProtocolBuffer *pPacket);				//회원 로그인	 요청(REQ)
-BOOL	netPacket_ReqMemberList(st_CLIENT *pClient, CProtocolBuffer *pPacket);			//회원 목록 	 요청(REQ)
+BOOL	netPacket_ReqAccountList(st_CLIENT *pClient, CProtocolBuffer *pPacket);			//회원 목록 	 요청(REQ)
 BOOL	netPacket_ReqFriendList(st_CLIENT *pClient, CProtocolBuffer *pPacket);			//친구 목록 	 요청(REQ)
 BOOL	netPacket_ReqFriendList_Request(st_CLIENT *pClient, CProtocolBuffer *pPacket);	//보낸 친구요청 목록 요청(REQ)
 BOOL	netPacket_ReqFriendList_Reply(st_CLIENT *pclient, CProtocolBuffer *pPacket);	//받은 친구요청 목록 요청(REQ)

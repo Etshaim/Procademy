@@ -1,31 +1,7 @@
-// JSON.cpp : 콘솔 응용 프로그램에 대한 진입점을 정의합니다.
-
 #include "stdafx.h"
-#include "rapidjson\document.h"
-#include "rapidjson\writer.h"
-#include "rapidjson\stringbuffer.h"
+#include "JSON.h"
 
-using namespace rapidjson;
-
-StringBuffer StringJSON;
-Writer<StringBuffer, UTF16<>> writer(StringJSON);
-
-// UTF-8의 char 문자열을 UTF-16 WCHAR로 변환
-bool UTF8toUTF16(const char *szText, WCHAR *szBuff, int iBuffLen);
-
-void LoadData(void);
-
-void SaveData(void);
-
-int main()
-{
-	SaveData();
-	LoadData();
-
-    return 0;
-}
-
-bool UTF8toUTF16(const char * szText, WCHAR * szBuff, int iBuffLen)
+BOOL UTF8toUTF16(const char * szText, WCHAR * szBuff, int iBuffLen)
 {
 	int iRetVal = MultiByteToWideChar(CP_UTF8, 0, szText, strlen(szText), szBuff, iBuffLen);
 
