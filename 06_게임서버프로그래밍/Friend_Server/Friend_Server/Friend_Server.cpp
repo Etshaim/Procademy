@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Friend_Server.h"
+#include "ProtocolBuffer.h"
 
 using namespace std;
 
@@ -102,7 +103,13 @@ void NetworkProcess(void)
 	for (iter = g_ClientMap.begin(); iter != g_ClientMap.end(); ++iter)
 	{
 		pClient = (*iter).second;
-		userTable_NO[iSocketCount]		= (DWORD)pClient->pAccount->AccountNo;
+
+		// 아직 계정을 생성 안 했을 수도 있으므로
+		if (nullptr != pClient->pAccount)
+		{
+			userTable_NO[iSocketCount] = (DWORD)pClient->pAccount->AccountNo;
+		}
+		
 		userTable_SOCKET[iSocketCount]	= pClient->sock;
 
 		FD_SET(pClient->sock, &readSet);
@@ -145,10 +152,8 @@ void SelectSocket(DWORD * dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, 
 	Time.tv_sec		= 0;
 	Time.tv_usec	= 0;
 
-
 	// select 호출
 	iRetVal = select(0, pReadSet, pWriteSet, nullptr, &Time);
-
 
 	//-----------------------------------------------------
 	// iRetVal 값이 0 이상이면 반응이 있는 것
@@ -162,37 +167,33 @@ void SelectSocket(DWORD * dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, 
 			{
 				continue;
 			}
-		}
 
-		// rset 반응 있으면 
-		if (FD_ISSET(pTableSocket[iCount], pReadSet))
-		{
-			// listen 소켓이 반응했으면 accept
-			if (0 == dwpTableNO[iCount])
+			// rset 반응 있으면 
+			if (FD_ISSET(pTableSocket[iCount], pReadSet))
 			{
-
+				// listen 소켓이 반응했으면 accept
+				if (0 == dwpTableNO[iCount])
+				{
+					netProc_Accept();
+				}
+				// 아니면 패킷 프로세스 처리
+				else
+				{
+					//netProc_Recv
+				}
 			}
-			// 아니면 패킷 프로세스 처리
-			else
-			{
 
+			// wset 반응 있으면
+			if (FD_ISSET(pTableSocket[iCount], pWriteSet))
+			{
+				//netProc_Send
 			}
 		}
-		
-
-		// wset 반응 있으면
-		// 패킷 보내기
 	}
 	else if (SOCKET_ERROR == iRetVal)
 	{
 		wprintf(L"SelectSocket()");
 	}
-	
-
-	
-
-	
-	
 }
 
 void err_quit(WCHAR * msg)
@@ -237,6 +238,22 @@ void CreateAccount(WCHAR * szNickName)
 	g_AccountMap.insert( pair<UINT64, st_DATA_ACCOUNT*>( pAccount->AccountNo, pAccount ) );
 }
 
+BOOL DisconnectClient(DWORD dwUserNo)
+{
+	st_CLIENT *pClient = g_ClientMap[dwUserNo];
+
+	if (nullptr == pClient)
+	{
+		return FALSE;
+	}
+
+	delete g_ClientMap[dwUserNo];
+
+	g_ClientMap.erase(dwUserNo);
+
+	return TRUE;
+}
+
 BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
 {
 	wprintf(L"PacketRecv [UserNO:%d][Type:%d]\n", pClient->pAccount->AccountNo, wMsgType);
@@ -279,12 +296,144 @@ BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
 	return TRUE;
 }
 
-BOOL newPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
+int MakeRecvPacket(st_CLIENT * pClient)
 {
+	// return 1		패킷 미완성
+	// return 0		패킷 처리
+	// return -1	오류
+
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		clPacket;
+
+	int iRecvQSize = pClient->RecvQ.GetUseSize();
+
+	// 헤더 사이즈보다 작으면 처리할 게 없다고 판단
+	if (sizeof(st_PACKET_HEADER) > iRecvQSize)
+	{
+		// 다음에 처리
+		return 1;
+	}
+
+	// 패킷 코드 검사
+	pClient->RecvQ.Peek((char*)&stHeader, sizeof(st_PACKET_HEADER));
+
+	if (dfPACKET_CODE != stHeader.byCode)
+	{
+		return -1;
+	}
+
+	// 헤더 + 페이로드보다 recvQ 크기가 작으면 미완성
+	if (stHeader.wPayloadSize + sizeof(stHeader) > iRecvQSize)
+	{
+		// 다음에 처리
+		return 1;
+	}
+
+	// 헤더부분은 빼버리고 페이로드만 가져옴
+	pClient->RecvQ.RemoveData( sizeof( stHeader ) );
+
+	if (stHeader.wPayloadSize != pClient->RecvQ.Get(clPacket.GetBufferPtr(), stHeader.wPayloadSize))
+	{
+		return -1;
+	}
+
+	clPacket.MoveWritePos(stHeader.wPayloadSize);
+
+	// 실질적인 패킷 처리 함수 호출
+	if (!PacketProc(pClient, stHeader.wMsgType, &clPacket))
+	{
+		return -1;
+	}
+
+	// 여기까지 왔다는 것은 정상적인 패킷 하나 처리
+	// 이어서 계속 처리할 수 있도록 return 0을 해줌
 	return 0;
 }
 
-BOOL netPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer * pPacket)
+void netProc_Recv(DWORD dwUserNo)
+{
+	st_CLIENT *pClient  = g_ClientMap[dwUserNo];
+	int iResult			= 0;
+
+	if (nullptr == pClient)
+	{
+		return;
+	}
+
+	iResult = recv(pClient->sock, pClient->RecvQ.GetWriteBufferPtr(),
+		pClient->RecvQ.GetFreeSize(), 0);
+
+	if (SOCKET_ERROR == iResult)
+	{
+		closesocket(pClient->sock);
+		DisconnectClient(dwUserNo);
+
+		return;
+	}
+
+	if (0 < iResult)
+	{
+		// write한만큼 recvQ 이동
+		pClient->RecvQ.MoveWritePos(iResult);
+
+		// 처리할 수 있는만큼 한번에 처리
+		while (1)
+		{
+			iResult = MakeRecvPacket(pClient);
+
+			// 아직 온전한 패킷을 만들 사이즈가 아님
+			if (1 == iResult)
+			{
+				break;
+			}
+			// 에러
+			if (-1 == iResult)
+			{
+				err_display(L"MakeRecvPacket()");
+				return;
+			}
+		}
+	}
+}
+
+void netProc_Send(DWORD dwUserNO)
+{
+}
+
+void netProc_Accept(void)
+{
+	st_CLIENT *pClient	= new st_CLIENT;
+	int iAddrLen		= 0;
+	WCHAR szTemp[32]	= { 0, };
+
+
+	iAddrLen = sizeof(pClient->connectAddr);
+
+	pClient->sock = accept(g_ListenSocket,
+		(SOCKADDR*)&pClient->connectAddr, &iAddrLen);
+
+	pClient->pAccount = nullptr;
+
+	if (INVALID_SOCKET == pClient->sock)
+	{
+		int iErr = WSAGetLastError();
+
+		if (WSAEWOULDBLOCK != iErr)
+		{
+			err_display(L"accpet()");
+		}
+	}
+	else
+	{
+		g_ClientMap.insert( pair< SOCKET, st_CLIENT*>( pClient->sock, pClient ) );
+
+		InetNtopW(AF_INET, &pClient->connectAddr.sin_addr, szTemp, 32);
+		wprintf(L"Accept - %s:%d [UserNO:%d]\n",
+			szTemp, ntohs(pClient->connectAddr.sin_port), g_AccountIncrement);
+	}
+}
+
+BOOL newPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
 	return 0;
 }

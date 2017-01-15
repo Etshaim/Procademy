@@ -149,6 +149,7 @@
     <ClInclude Include="Friend_Server.h" />
     <ClInclude Include="JSON.h" />
     <ClInclude Include="Protocol.h" />
+    <ClInclude Include="ProtocolBuffer.h" />
     <ClInclude Include="stdafx.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
@@ -159,6 +160,7 @@
     <ClCompile Include="Friend_Server.cpp" />
     <ClCompile Include="JSON.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="ProtocolBuffer.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

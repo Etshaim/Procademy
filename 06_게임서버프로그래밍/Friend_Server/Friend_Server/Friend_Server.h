@@ -52,8 +52,21 @@ void	err_display(WCHAR *msg);
 // 계정 생성
 void	CreateAccount(WCHAR *szNickName);
 
+// client 끊기
+BOOL	DisconnectClient(DWORD dwUserNo);
+
 // 패킷 프로세스
 BOOL	PacketProc(st_CLIENT *pClient, WORD wMsgType, CProtocolBuffer *pPacket);
+
+// 온전한 패킷 만들기
+int		MakeRecvPacket(st_CLIENT *pClient);
+
+
+
+// NET 프로세스
+void	netProc_Recv(DWORD dwUserNO);
+void	netProc_Send(DWORD dwUserNO);
+void	netProc_Accept(void);
 
 // Request
 BOOL 	netPacket_ReqAccountAdd(st_CLIENT *pClient, CProtocolBuffer *pPacket);				//회원 가입		 요청(REQ)

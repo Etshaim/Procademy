@@ -13,7 +13,7 @@ extern	map<DWORD, st_CHAT_ROOM*>	g_RoomMap;		// 채팅방 관리 메인 map
 extern	SOCKET		g_ListenSocket;					// 사용자 accept용 listen 소켓
 
 
-BOOL NewworkInitial(void)
+BOOL NetworkInitial(void)
 {
 	// 윈속 초기화
 	WSADATA wsa;
@@ -63,7 +63,7 @@ void NetworkProcess(void)
 {
 	st_CLIENT *pClient;
 
-	DWORD	userTable_NO[FD_SETSIZE] = { -1, };
+	DWORD	userTable_NO[FD_SETSIZE]	 = { -1, };
 	SOCKET	userTable_SOCKET[FD_SETSIZE] = { INVALID_SOCKET };
 
 	int		iSocketCount = 0;	// 64명 되면 호출
@@ -80,8 +80,8 @@ void NetworkProcess(void)
 
 	// 첫 번째 인덱스에는 listen socket 넣을 것임
 	FD_SET(g_ListenSocket, &readSet);
-	userTable_NO[iSocketCount] = 0;
-	userTable_SOCKET[iSocketCount] = g_ListenSocket;
+	userTable_NO[iSocketCount]		= 0;
+	userTable_SOCKET[iSocketCount]	= g_ListenSocket;
 
 	iSocketCount++;
 
@@ -279,8 +279,6 @@ BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
 	return TRUE;
 }
 
-
-
 void err_quit(WCHAR * msg)
 {
 	LPVOID lpMsgBuf;
@@ -449,7 +447,7 @@ void netProc_Accept(void)
 	}
 }
 
-st_CLIENT * FindClient(DWORD dwUserNO)
+st_CLIENT *FindClient(DWORD dwUserNO)
 {
 
 

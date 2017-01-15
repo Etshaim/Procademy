@@ -34,7 +34,7 @@ struct st_CHAT_ROOM
 };
 
 // 네트워크 초기화
-BOOL	NewworkInitial(void);
+BOOL	NetworkInitial(void);
 
 void	NetworkProcess(void);
 

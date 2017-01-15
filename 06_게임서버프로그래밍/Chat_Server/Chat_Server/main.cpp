@@ -25,7 +25,7 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[])
 {
 	setlocale(LC_ALL, "");	// 유니코드 스탠다드 출력 환경 세팅
 
-	if (!NewworkInitial())
+	if (!NetworkInitial())
 	{
 		wprintf(L"NewworkInitial()");
 		return 0;
