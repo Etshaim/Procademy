@@ -9,12 +9,16 @@ struct st_DATA_ACCOUNT
 {
 	UINT64	AccountNo;
 	WCHAR	szID[dfNICK_MAX_LEN];
-
 };
 
 // 클라이언트 구조체
 struct st_CLIENT
 {
+	st_CLIENT()
+	{
+		pAccount = nullptr;
+	}
+
 	SOCKET			sock;
 	SOCKADDR_IN		connectAddr;
 
@@ -53,7 +57,7 @@ void	err_display(WCHAR *msg);
 void	CreateAccount(WCHAR *szNickName);
 
 // client 끊기
-BOOL	DisconnectClient(DWORD dwUserNo);
+BOOL	DisconnectClient(SOCKET socket);
 
 // 패킷 프로세스
 BOOL	PacketProc(st_CLIENT *pClient, WORD wMsgType, CProtocolBuffer *pPacket);
@@ -61,10 +65,8 @@ BOOL	PacketProc(st_CLIENT *pClient, WORD wMsgType, CProtocolBuffer *pPacket);
 // 온전한 패킷 만들기
 int		MakeRecvPacket(st_CLIENT *pClient);
 
-
-
 // NET 프로세스
-void	netProc_Recv(DWORD dwUserNO);
+void	netProc_Recv(SOCKET socket);
 void	netProc_Send(DWORD dwUserNO);
 void	netProc_Accept(void);
 

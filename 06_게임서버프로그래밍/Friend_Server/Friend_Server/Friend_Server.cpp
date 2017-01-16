@@ -74,8 +74,8 @@ void NetworkProcess(void)
 {
 	st_CLIENT *pClient;
 
-	DWORD	userTable_NO[FD_SETSIZE] = { (DWORD)-1, };
-	SOCKET	userTable_SOCKET[FD_SETSIZE] = { INVALID_SOCKET };
+	DWORD	userTable_NO[FD_SETSIZE];
+	SOCKET	userTable_SOCKET[FD_SETSIZE];
 
 	int		iSocketCount = 0;	// 64명 되면 호출
 
@@ -85,8 +85,8 @@ void NetworkProcess(void)
 	FD_ZERO( &readSet );
 	FD_ZERO( &writeSet );
 
-	memset(userTable_NO, -1, FD_SETSIZE);
-	memset(userTable_SOCKET, INVALID_SOCKET, FD_SETSIZE);
+	memset(userTable_NO, -1, sizeof(DWORD) * FD_SETSIZE);
+	memset(userTable_SOCKET, INVALID_SOCKET, sizeof(SOCKET) * FD_SETSIZE);
 
 	 
 	// 첫 번째 인덱스에는 listen socket 넣을 것임
@@ -100,22 +100,28 @@ void NetworkProcess(void)
 	// Client를 순회하면서 처리
 	map< SOCKET, st_CLIENT* >::iterator iter;
 
-	for (iter = g_ClientMap.begin(); iter != g_ClientMap.end(); ++iter)
+	for (iter = g_ClientMap.begin(); iter != g_ClientMap.end(); )
 	{
 		pClient = (*iter).second;
-
-		// 아직 계정을 생성 안 했을 수도 있으므로
-		if (nullptr != pClient->pAccount)
-		{
-			userTable_NO[iSocketCount] = (DWORD)pClient->pAccount->AccountNo;
-		}
 		
-		userTable_SOCKET[iSocketCount]	= pClient->sock;
+		++iter;
 
-		FD_SET(pClient->sock, &readSet);
-		FD_SET(pClient->sock, &writeSet);
+		// pClient가 nullptr이 아니면
+		if (nullptr != pClient)
+		{
+			// 아직 계정을 생성 안 했을 수도 있으므로
+			if (nullptr != pClient->pAccount)
+			{
+				userTable_NO[iSocketCount] = pClient->pAccount->AccountNo;
+			}
 
-		iSocketCount++;
+			userTable_SOCKET[iSocketCount] = pClient->sock;
+
+			FD_SET(pClient->sock, &readSet);
+			FD_SET(pClient->sock, &writeSet);
+
+			iSocketCount++;
+		}
 
 		if (iSocketCount >= FD_SETSIZE)
 		{
@@ -140,7 +146,7 @@ void NetworkProcess(void)
 	}
 }
 
-void SelectSocket(DWORD * dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, FD_SET * pWriteSet)
+void SelectSocket(DWORD *dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, FD_SET * pWriteSet)
 {
 	timeval Time;
 	int		iRetVal;
@@ -179,7 +185,7 @@ void SelectSocket(DWORD * dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, 
 				// 아니면 패킷 프로세스 처리
 				else
 				{
-					//netProc_Recv
+					netProc_Recv( pTableSocket[iCount] );
 				}
 			}
 
@@ -238,25 +244,25 @@ void CreateAccount(WCHAR * szNickName)
 	g_AccountMap.insert( pair<UINT64, st_DATA_ACCOUNT*>( pAccount->AccountNo, pAccount ) );
 }
 
-BOOL DisconnectClient(DWORD dwUserNo)
+BOOL DisconnectClient(SOCKET socket)
 {
-	st_CLIENT *pClient = g_ClientMap[dwUserNo];
+	st_CLIENT *pClient = g_ClientMap[socket];
 
 	if (nullptr == pClient)
 	{
 		return FALSE;
 	}
 
-	delete g_ClientMap[dwUserNo];
+	delete g_ClientMap[socket];
 
-	g_ClientMap.erase(dwUserNo);
+	g_ClientMap.erase(socket);
 
 	return TRUE;
 }
 
 BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
 {
-	wprintf(L"PacketRecv [UserNO:%d][Type:%d]\n", pClient->pAccount->AccountNo, wMsgType);
+	wprintf(L"PacketRecv [UserNO:%d][Type:%d]\n", pClient->sock, wMsgType);
 
 	switch (wMsgType)
 	{
@@ -339,7 +345,9 @@ int MakeRecvPacket(st_CLIENT * pClient)
 
 	clPacket.MoveWritePos(stHeader.wPayloadSize);
 
+	//------------------------------------------------
 	// 실질적인 패킷 처리 함수 호출
+	//------------------------------------------------
 	if (!PacketProc(pClient, stHeader.wMsgType, &clPacket))
 	{
 		return -1;
@@ -350,11 +358,12 @@ int MakeRecvPacket(st_CLIENT * pClient)
 	return 0;
 }
 
-void netProc_Recv(DWORD dwUserNo)
+void netProc_Recv(SOCKET socket)
 {
-	st_CLIENT *pClient  = g_ClientMap[dwUserNo];
+	
+	st_CLIENT *pClient  = g_ClientMap[socket];
 	int iResult			= 0;
-
+		
 	if (nullptr == pClient)
 	{
 		return;
@@ -366,7 +375,7 @@ void netProc_Recv(DWORD dwUserNo)
 	if (SOCKET_ERROR == iResult)
 	{
 		closesocket(pClient->sock);
-		DisconnectClient(dwUserNo);
+		DisconnectClient(socket);
 
 		return;
 	}
@@ -398,6 +407,7 @@ void netProc_Recv(DWORD dwUserNo)
 
 void netProc_Send(DWORD dwUserNO)
 {
+
 }
 
 void netProc_Accept(void)
@@ -428,8 +438,8 @@ void netProc_Accept(void)
 		g_ClientMap.insert( pair< SOCKET, st_CLIENT*>( pClient->sock, pClient ) );
 
 		InetNtopW(AF_INET, &pClient->connectAddr.sin_addr, szTemp, 32);
-		wprintf(L"Accept - %s:%d [UserNO:%d]\n",
-			szTemp, ntohs(pClient->connectAddr.sin_port), g_AccountIncrement);
+		wprintf(L"Accept - %s:%d [Socket:%d]\n",
+			szTemp, ntohs(pClient->connectAddr.sin_port), pClient->sock);
 	}
 }
 
@@ -440,7 +450,45 @@ BOOL newPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 
 BOOL netPacket_ReqAccountAdd(st_CLIENT * pClient, CProtocolBuffer * pPacket)
 {
-	return 0;
+	// account가 있는 상태라면 거절
+	if (nullptr != pClient->pAccount)
+	{
+		return FALSE;
+	}
+
+	// 닉네임이 중복되면 거절
+	WCHAR szNickname[dfNICK_MAX_LEN] = { 0, };
+
+	int iSize = pPacket->GetDataSize();
+	pPacket->GetData((char*)szNickname, iSize);
+
+	//szNickname[iSize] = L'\0';
+
+	// account map 순회하면서 중복 아이디 있는지 검사
+	map<UINT64, st_DATA_ACCOUNT*>::iterator itAccount;
+
+	for (itAccount = g_AccountMap.begin(); itAccount != g_AccountMap.end(); itAccount++)
+	{
+		if ( 0 == wcscmp( szNickname, itAccount->second->szID ) )
+		{
+			// 닉네임 중복
+			return FALSE;
+		}
+	}
+	
+	// 여기까지 왔으면 계정 생성해줌
+	pClient->pAccount = new st_DATA_ACCOUNT;
+
+	// 닉네임 세팅
+	wcscpy_s(pClient->pAccount->szID, szNickname);
+
+	// id 세팅
+	pClient->pAccount->AccountNo = g_AccountIncrement;
+	
+	// map에 추가
+	g_AccountMap.insert( pair< INT64, st_DATA_ACCOUNT* >( pClient->pAccount->AccountNo, pClient->pAccount ) );
+
+	return TRUE;
 }
 
 BOOL netPacket_ReqLogin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
@@ -495,6 +543,7 @@ BOOL netPacket_ReqFriendAgree(st_CLIENT *pclient, CProtocolBuffer *pPacket)
 
 void Send_ResAccountAdd(st_CLIENT * pClient, BYTE byResult)
 {
+
 }
 
 void Send_ResLogin(st_CLIENT * pClient, BYTE byResult)
