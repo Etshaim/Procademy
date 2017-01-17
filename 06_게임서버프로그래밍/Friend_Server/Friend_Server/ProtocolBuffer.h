@@ -127,6 +127,7 @@ public:
 	CProtocolBuffer	&operator << (int iValue);
 	CProtocolBuffer	&operator << (DWORD dwValue);
 	CProtocolBuffer	&operator << (float fValue);
+	CProtocolBuffer	&operator << (UINT64 iValue);
 	CProtocolBuffer	&operator << (__int64 iValue);
 	CProtocolBuffer	&operator << (double dValue);
 
@@ -141,6 +142,7 @@ public:
 	CProtocolBuffer	&operator >> (int &iValue);
 	CProtocolBuffer	&operator >> (DWORD &dwValue);
 	CProtocolBuffer	&operator >> (float &fValue);
+	CProtocolBuffer	&operator >> (UINT64 &iValue);
 	CProtocolBuffer	&operator >> (__int64 &iValue);
 	CProtocolBuffer	&operator >> (double &dValue);
 

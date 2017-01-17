@@ -246,12 +246,20 @@ CProtocolBuffer&	CProtocolBuffer::operator << (float fValue)
 	return *this;
 }
 
+CProtocolBuffer&	CProtocolBuffer::operator << (UINT64 iValue)
+{
+	PutData((char*)&iValue, sizeof(UINT64));
+
+	return *this;
+}
+
 CProtocolBuffer&	CProtocolBuffer::operator << (__int64 iValue)
 {
 	PutData((char*)&iValue, sizeof(__int64));
 
 	return *this;
 }
+
 CProtocolBuffer&	CProtocolBuffer::operator << (double dValue)
 {
 	PutData((char*)&dValue, sizeof(double));
@@ -305,6 +313,12 @@ CProtocolBuffer&	CProtocolBuffer::operator >> (float &fValue)
 
 	return *this;
 }
+CProtocolBuffer & CProtocolBuffer::operator >> (UINT64 & iValue)
+{
+	GetData((char*)&iValue, sizeof(UINT64));
+
+	return *this;
+}
 CProtocolBuffer&	CProtocolBuffer::operator >> (__int64 &iValue)
 {
 	GetData((char*)&iValue, sizeof(__int64));
@@ -350,8 +364,10 @@ int		CProtocolBuffer::GetData(char *chpDest, int iSize)
 		}
 	}
 
+	MoveReadPos(iSize);
+
 	// readpos 옮기기
-	m_chpReadPos = m_chpReadPos + iSize;
+	//m_chpReadPos = m_chpReadPos + iSize;
 
 
 	return iSize;
@@ -402,7 +418,9 @@ int		CProtocolBuffer::PutData(char *chpSrc, int iSrcSize)
 	}
 
 	// m_chpWritePos 이동
-	m_chpWritePos = m_chpWritePos + iSrcSize;
+	MoveWritePos(iSrcSize);
+
+	//m_chpWritePos = m_chpWritePos + iSrcSize;
 
 	return iSrcSize;
 }

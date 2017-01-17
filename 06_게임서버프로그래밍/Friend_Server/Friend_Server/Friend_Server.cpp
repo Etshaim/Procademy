@@ -192,7 +192,7 @@ void SelectSocket(DWORD *dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, F
 			// wset 반응 있으면
 			if (FD_ISSET(pTableSocket[iCount], pWriteSet))
 			{
-				//netProc_Send
+				netProc_Send(pTableSocket[iCount]);
 			}
 		}
 	}
@@ -258,6 +258,25 @@ BOOL DisconnectClient(SOCKET socket)
 	g_ClientMap.erase(socket);
 
 	return TRUE;
+}
+
+st_CLIENT * FindClient(SOCKET socket)
+{
+	st_CLIENT *pClient;
+
+	map<SOCKET, st_CLIENT*>::iterator ClienIter;
+
+	for (ClienIter = g_ClientMap.begin(); ClienIter != g_ClientMap.end(); ClienIter++)
+	{
+		pClient = ClienIter->second;
+
+		if ( socket == pClient->sock )
+		{
+			return pClient;
+		}
+	}
+
+	return nullptr;
 }
 
 BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
@@ -405,9 +424,58 @@ void netProc_Recv(SOCKET socket)
 	}
 }
 
-void netProc_Send(DWORD dwUserNO)
+void netProc_Send(SOCKET socket)
 {
+	st_CLIENT	*pClient;
+	int			iResult;
+	int			iSendSize;
 
+	pClient = FindClient(socket);
+
+	if ( nullptr == pClient )
+	{
+		return;
+	}
+
+	iSendSize = pClient->SendQ.GetUseSize();
+
+	if (0 >= iSendSize)
+	{
+		return;
+	}
+
+	iResult = send(pClient->sock, pClient->SendQ.GetReadBufferPtr(), iSendSize, 0);
+
+	if ( SOCKET_ERROR == iResult )
+	{
+		DWORD dwError = WSAGetLastError();
+
+		if (WSAEWOULDBLOCK == dwError)
+		{
+			wprintf(L"Socket WOULDBLOCK\n");
+			return;
+		}
+		
+		wprintf(L"Socket Error\n");
+
+		DisconnectClient(pClient->sock);
+		closesocket(pClient->sock);
+		
+		return;
+	}
+	else
+	{
+		if (iSendSize < iResult)
+		{
+			err_quit(L"Send size Error");
+			return;
+		}
+		else
+		{
+			pClient->SendQ.RemoveData(iResult);
+		}
+	}
+	return;
 }
 
 void netProc_Accept(void)
@@ -443,41 +511,46 @@ void netProc_Accept(void)
 	}
 }
 
-BOOL newPacket_ReqJoin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
-{
-	return 0;
-}
+////////////////////////////////////////////////////////////
+//
+//			Request
+//
+////////////////////////////////////////////////////////////
 
 BOOL netPacket_ReqAccountAdd(st_CLIENT * pClient, CProtocolBuffer * pPacket)
 {
-	// account가 있는 상태라면 거절
+	/*// account가 있는 상태라면 거절
 	if (nullptr != pClient->pAccount)
 	{
 		return FALSE;
-	}
+	}*/
 
-	// 닉네임이 중복되면 거절
+	st_DATA_ACCOUNT *pAccount = nullptr;
+
 	WCHAR szNickname[dfNICK_MAX_LEN] = { 0, };
 
 	int iSize = pPacket->GetDataSize();
 	pPacket->GetData((char*)szNickname, iSize);
 
-	//szNickname[iSize] = L'\0';
 
-	// account map 순회하면서 중복 아이디 있는지 검사
-	map<UINT64, st_DATA_ACCOUNT*>::iterator itAccount;
+	//// 닉네임이 중복되면 거절
+	////szNickname[iSize] = L'\0';
 
-	for (itAccount = g_AccountMap.begin(); itAccount != g_AccountMap.end(); itAccount++)
-	{
-		if ( 0 == wcscmp( szNickname, itAccount->second->szID ) )
-		{
-			// 닉네임 중복
-			return FALSE;
-		}
-	}
-	
-	// 여기까지 왔으면 계정 생성해줌
-	pClient->pAccount = new st_DATA_ACCOUNT;
+	//// account map 순회하면서 중복 아이디 있는지 검사
+	//map<UINT64, st_DATA_ACCOUNT*>::iterator itAccount;
+
+	//for (itAccount = g_AccountMap.begin(); itAccount != g_AccountMap.end(); itAccount++)
+	//{
+	//	if ( 0 == wcscmp( szNickname, itAccount->second->szID ) )
+	//	{
+	//		// 닉네임 중복
+	//		return FALSE;
+	//	}
+	//}
+
+	pAccount = new st_DATA_ACCOUNT;
+
+	pClient->pAccount = pAccount;
 
 	// 닉네임 세팅
 	wcscpy_s(pClient->pAccount->szID, szNickname);
@@ -488,22 +561,56 @@ BOOL netPacket_ReqAccountAdd(st_CLIENT * pClient, CProtocolBuffer * pPacket)
 	// map에 추가
 	g_AccountMap.insert( pair< INT64, st_DATA_ACCOUNT* >( pClient->pAccount->AccountNo, pClient->pAccount ) );
 
+	// 계정 추가 결과를 클라에 전송
+	Send_ResAccountAdd(pClient);
+
 	return TRUE;
 }
 
 BOOL netPacket_ReqLogin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
-	return 0;
+	st_DATA_ACCOUNT *pAccount = nullptr;
+
+	UINT64 AccountNo = 0;
+	WCHAR szNickname[dfNICK_MAX_LEN];
+
+	BYTE byResult = 0;
+	
+	(*pPacket) >> AccountNo;
+
+	// 찾아서 있으면 
+	map<UINT64, st_DATA_ACCOUNT*>::iterator AccountIter;
+
+	for (AccountIter = g_AccountMap.begin(); AccountIter != g_AccountMap.end(); AccountIter++)
+	{
+		pAccount = AccountIter->second;
+
+		if (AccountNo == pAccount->AccountNo)
+		{
+			byResult = 1;
+
+			// 클라이언트에 계정을 연결해줌
+			pClient->pAccount = pAccount;
+		}
+	}
+
+	Send_ResLogin(pClient);
+
+	return TRUE;
 }
 
 BOOL netPacket_ReqAccountList(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
-	return 0;
+	Send_ResAccountList(pClient);
+
+	return TRUE;
 }
 
 BOOL netPacket_ReqFriendList(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
-	return 0;
+	Send_ResFriendList(pClient);
+
+	return TRUE;
 }
 
 BOOL netPacket_ReqFriendList_Request(st_CLIENT * pClient, CProtocolBuffer *pPacket)
@@ -541,47 +648,297 @@ BOOL netPacket_ReqFriendAgree(st_CLIENT *pclient, CProtocolBuffer *pPacket)
 	return 0;
 }
 
-void Send_ResAccountAdd(st_CLIENT * pClient, BYTE byResult)
+////////////////////////////////////////////////////////////
+//
+//			Response
+//
+////////////////////////////////////////////////////////////
+void Send_ResAccountAdd(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+	
+	if (nullptr == pClient->pAccount)
+	{
+		return;
+	}
 
+	makePacket_ResAccountAdd(&stHeader, &Packet, pClient->pAccount->AccountNo);
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
-void Send_ResLogin(st_CLIENT * pClient, BYTE byResult)
+void Send_ResLogin(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	if (nullptr == pClient->pAccount)
+	{
+		return;
+	}
+
+	makePacket_ResLogin(&stHeader, &Packet, pClient->pAccount);
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResAccountList(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	makePacket_ResAccountList(&stHeader, &Packet);
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResFriendList(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	makePacket_ResFriendList(&stHeader, &Packet, pClient->pAccount);
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResFriendRequestList(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
-void Send_ResFriendList_Reply(st_CLIENT * pclient)
+void Send_ResFriendList_Reply(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResFriendRemove(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
-void Send_ResFriendRequest(st_CLIENT * pclient, BYTE byResult)
+void Send_ResFriendRequest(st_CLIENT * pClient, BYTE byResult)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResFriendCancel(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResFriendDeny(st_CLIENT * pClient)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
 }
 
 void Send_ResFriendAgree(st_CLIENT * pClient, BYTE byResult)
 {
+	st_PACKET_HEADER	stHeader;
+	CProtocolBuffer		Packet;
+
+	SendUnicast(pClient, &stHeader, &Packet);
+}
+
+////////////////////////////////////////////////////////////
+//
+//			Response 패킷 만들기
+//
+////////////////////////////////////////////////////////////
+void makePacket_ResAccountAdd(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket, UINT64 AccountNo)
+{
+	pPacket->Clear();
+
+	(*pPacket) << AccountNo;
+
+	pHeader->byCode = dfPACKET_CODE;
+	pHeader->wMsgType = df_RES_ACCOUNT_ADD;
+	pHeader->wPayloadSize = pPacket->GetDataSize();
+}
+
+void makePacket_ResLogin(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket, st_DATA_ACCOUNT *pAccount)
+{
+	pPacket->Clear();
+
+	if (nullptr == pAccount)
+	{
+		WCHAR	szNickname[dfNICK_MAX_LEN]	= { 0, };
+		UINT64	AccountNo					= 0;
+
+		(*pPacket) << AccountNo;
+
+		pPacket->PutData( ( char* )szNickname, dfNICK_MAX_LEN );
+	}
+	else
+	{
+		(*pPacket) << pAccount->AccountNo;
+		pPacket->PutData( ( char* )pAccount->szID, dfNICK_MAX_LEN * sizeof(WCHAR) );
+	}
+
+	// 헤더 입력
+	pHeader->byCode			= dfPACKET_CODE;
+	pHeader->wMsgType		= df_RES_LOGIN;
+	pHeader->wPayloadSize	= pPacket->GetDataSize();
+}
+
+void makePacket_ResAccountList(st_PACKET_HEADER *pHeader, CProtocolBuffer * pPacket)
+{
+	st_DATA_ACCOUNT *pAccount;
+
+	UINT64 AccountSize = g_AccountMap.size();
+
+	//WCHAR szNickname[dfNICK_MAX_LEN] = L"TEST";
+	//UINT64 AccountNo = 0X01;
+
+	// 패킷 비우고
+	pPacket->Clear();
+
+	// 회원수 넣고
+	(*pPacket) << (int)g_AccountMap.size();
+
+	// account map 순회하면서 정보 하나씩 차곡차곡 넣기
+	
+	map<UINT64, st_DATA_ACCOUNT*>::iterator AccountIter;
+
+	for (AccountIter = g_AccountMap.begin(); AccountIter != g_AccountMap.end(); AccountIter++)
+	{
+		pAccount = (*AccountIter).second;
+
+		(*pPacket) << pAccount->AccountNo;
+		pPacket->PutData((char*)pAccount->szID, dfNICK_MAX_LEN * sizeof(WCHAR));
+	}
+
+	// 헤더 입력
+	pHeader->byCode			= dfPACKET_CODE;
+	pHeader->wMsgType		= df_RES_ACCOUNT_LIST;
+	pHeader->wPayloadSize	= pPacket->GetDataSize();
+}
+
+void makePacket_ResFriendList(st_PACKET_HEADER *pHeader, CProtocolBuffer * pPacket, st_DATA_ACCOUNT *pAccount)
+{
+	pPacket->Clear();
+
+	if (nullptr == pAccount)
+	{
+		(*pPacket) << (int)0;
+	}
+	else
+	{
+		UINT64 IndexKey = pAccount->AccountNo;
+		int iKeyCount = 0;
+
+		iKeyCount = g_FriendIndex_To.count(IndexKey) + g_FriendIndex_From.count(IndexKey);
+
+		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
+
+		FriendToIter_Lower = g_FriendIndex_To.lower_bound(IndexKey);
+		FriendToIter_Upper = g_FriendIndex_To.upper_bound(IndexKey);
+
+		multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
+
+		FriendFromIter_Lower = g_FriendIndex_From.lower_bound(IndexKey);
+		FriendFromIter_Upper = g_FriendIndex_From.upper_bound(IndexKey);
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Lower;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Upper;
+
+		multimap<UINT64, UINT64>::iterator IndexIter;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator MapIter;
+
+		for (IndexIter = FriendToIter_Lower; IndexIter != FriendToIter_Upper; IndexIter++ )
+		{
+			st_DATA_FRIEND *pFriend;
+
+			UINT MapKey = IndexIter->second;
+
+			FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
+			FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
+
+			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+			{
+				pFriend = MapIter->second;
+
+				(*pPacket) << pFriend->FromAccountNo;
+			}
+
+		}
+	}
+
+	// 헤더 입력
+	pHeader->byCode			= dfPACKET_CODE;
+	pHeader->wMsgType		= df_RES_FRIEND_LIST;
+	pHeader->wPayloadSize	= pPacket->GetDataSize();
+}
+
+void makePacket_ResFriendRequestList(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+void makePacket_ResFriendList_Reply(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+void makePacket_ResFriendRemove(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+void makePacket_FriendRequest(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+void makePacket_ResFriendCancel(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+void makePacket_ResFriendDeny(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+void makePacket_ResFriendAgree(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+
+}
+
+////////////////////////////////////////////////////////////
+//
+//			특정 클라이언트에게 보내기
+//
+////////////////////////////////////////////////////////////
+void SendUnicast(st_CLIENT * pClient, st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+{
+	if (nullptr == pClient)
+	{
+		err_display(L"SendUnicast()");
+	}
+
+	char* chpTemp = pPacket->GetBufferPtr();
+
+	pClient->SendQ.Put( ( char* )pHeader, sizeof( st_PACKET_HEADER ) );
+	pClient->SendQ.Put( (char*)pPacket->GetBufferPtr(), pPacket->GetDataSize() );
 }
