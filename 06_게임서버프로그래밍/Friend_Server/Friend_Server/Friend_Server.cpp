@@ -46,9 +46,9 @@ BOOL NetworkInitial(void)
 	// bind()
 	SOCKADDR_IN serveraddr;
 	memset(&serveraddr, 0, sizeof(serveraddr));
-	serveraddr.sin_family = AF_INET;
+	serveraddr.sin_family			= AF_INET;
 	serveraddr.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
-	serveraddr.sin_port = htons(dfNETWORK_PORT);
+	serveraddr.sin_port				= htons(dfNETWORK_PORT);
 
 	int iRetVal = bind(g_ListenSocket, (SOCKADDR*)&serveraddr, sizeof(serveraddr));
 
@@ -74,7 +74,7 @@ void NetworkProcess(void)
 {
 	st_CLIENT *pClient;
 
-	DWORD	userTable_NO[FD_SETSIZE];
+	UINT64	userTable_NO[FD_SETSIZE];
 	SOCKET	userTable_SOCKET[FD_SETSIZE];
 
 	int		iSocketCount = 0;	// 64명 되면 호출
@@ -86,8 +86,7 @@ void NetworkProcess(void)
 	FD_ZERO( &writeSet );
 
 	memset(userTable_NO, -1, sizeof(DWORD) * FD_SETSIZE);
-	memset(userTable_SOCKET, INVALID_SOCKET, sizeof(SOCKET) * FD_SETSIZE);
-
+	memset(userTable_SOCKET, (int)INVALID_SOCKET, sizeof(SOCKET) * FD_SETSIZE);
 	 
 	// 첫 번째 인덱스에는 listen socket 넣을 것임
 	FD_SET(g_ListenSocket, &readSet);
@@ -132,7 +131,7 @@ void NetworkProcess(void)
 			FD_ZERO(&writeSet);
 
 			memset(userTable_NO, -1, FD_SETSIZE);
-			memset(userTable_SOCKET, INVALID_SOCKET, FD_SETSIZE);
+			memset(userTable_SOCKET, (int)INVALID_SOCKET, sizeof(SOCKET) * FD_SETSIZE);
 
 			iSocketCount = 0;
 		}
@@ -146,7 +145,7 @@ void NetworkProcess(void)
 	}
 }
 
-void SelectSocket(DWORD *dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, FD_SET * pWriteSet)
+void SelectSocket(UINT64 *pTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, FD_SET * pWriteSet)
 {
 	timeval Time;
 	int		iRetVal;
@@ -178,7 +177,7 @@ void SelectSocket(DWORD *dwpTableNO, SOCKET * pTableSocket, FD_SET * pReadSet, F
 			if (FD_ISSET(pTableSocket[iCount], pReadSet))
 			{
 				// listen 소켓이 반응했으면 accept
-				if (0 == dwpTableNO[iCount])
+				if (0 == pTableNO[iCount])
 				{
 					netProc_Accept();
 				}
@@ -281,7 +280,7 @@ st_CLIENT * FindClient(SOCKET socket)
 
 BOOL PacketProc(st_CLIENT * pClient, WORD wMsgType, CProtocolBuffer * pPacket)
 {
-	wprintf(L"PacketRecv [UserNO:%d][Type:%d]\n", pClient->sock, wMsgType);
+	wprintf(L"PacketRecv [UserNO:%lld][Type:%ld]\n", pClient->sock, wMsgType);
 
 	switch (wMsgType)
 	{
@@ -506,7 +505,7 @@ void netProc_Accept(void)
 		g_ClientMap.insert( pair< SOCKET, st_CLIENT*>( pClient->sock, pClient ) );
 
 		InetNtopW(AF_INET, &pClient->connectAddr.sin_addr, szTemp, 32);
-		wprintf(L"Accept - %s:%d [Socket:%d]\n",
+		wprintf(L"Accept - %s:%d [Socket:%lld]\n",
 			szTemp, ntohs(pClient->connectAddr.sin_port), pClient->sock);
 	}
 }
@@ -572,7 +571,7 @@ BOOL netPacket_ReqLogin(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 	st_DATA_ACCOUNT *pAccount = nullptr;
 
 	UINT64 AccountNo = 0;
-	WCHAR szNickname[dfNICK_MAX_LEN];
+	//WCHAR szNickname[dfNICK_MAX_LEN];
 
 	BYTE byResult = 0;
 	
@@ -615,6 +614,8 @@ BOOL netPacket_ReqFriendList(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 
 BOOL netPacket_ReqFriendList_Request(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
+	Send_ResFriendList_Request(pClient);
+
 	return 0;
 }
 
@@ -630,7 +631,100 @@ BOOL netPacket_ReqFriendRemove(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 
 BOOL netPacket_ReqFriendRequest(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 {
-	return 0;
+	UINT64	FriendAccountNo = 0;
+	BYTE	byResult		= df_RESULT_FRIEND_REQUEST_NOTFOUND;
+
+	(*pPacket) >> FriendAccountNo;
+
+	// 로그인이 되었는지 확인
+	if (nullptr != pclient->pAccount)
+	{
+		// 이미 친구인지 확인
+		UINT64 ToAccountNo	= pclient->pAccount->AccountNo;
+		UINT64 iKeyCount	= 0;
+
+		iKeyCount = g_FriendIndex_To.count(ToAccountNo) + g_FriendIndex_From.count(ToAccountNo);
+
+		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
+
+		FriendToIter_Lower = g_FriendIndex_To.lower_bound(ToAccountNo);
+		FriendToIter_Upper = g_FriendIndex_To.upper_bound(ToAccountNo);
+
+		multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
+
+		FriendFromIter_Lower = g_FriendIndex_From.lower_bound(ToAccountNo);
+		FriendFromIter_Upper = g_FriendIndex_From.upper_bound(ToAccountNo);
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Lower;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Upper;
+
+		multimap<UINT64, UINT64>::iterator IndexIter;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator MapIter;
+
+		for (IndexIter = FriendToIter_Lower; IndexIter != FriendToIter_Upper; IndexIter++)
+		{
+			st_DATA_FRIEND *pFriend;
+
+			UINT64 MapKey = IndexIter->second;
+
+			FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
+			FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
+
+			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+			{
+				pFriend = MapIter->second;
+
+				if (pFriend->FromAccountNo == FriendAccountNo)
+				{
+					byResult = df_RESULT_FRIEND_REQUEST_ALREADY;
+				}
+			}
+		}
+
+		for (IndexIter = FriendFromIter_Lower; IndexIter != FriendFromIter_Upper; IndexIter++)
+		{
+			st_DATA_FRIEND *pFriend;
+
+			UINT64 MapKey = IndexIter->second;
+
+			FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
+			FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
+
+			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+			{
+				pFriend = MapIter->second;
+
+				if (pFriend->ToAccountNo == FriendAccountNo)
+				{
+					byResult = df_RESULT_FRIEND_REQUEST_ALREADY;
+				}
+			}
+		}
+
+		// 여기까지 왔다면 친구는 아닌 상태
+		// 친구 요청을 위해 존재하는 Account No인지 찾는다
+		if (df_RESULT_FRIEND_REQUEST_ALREADY != byResult)
+		{
+			map<UINT64, st_DATA_ACCOUNT*>::iterator AccountIter;
+
+			for (AccountIter = g_AccountMap.begin(); AccountIter != g_AccountMap.end(); AccountIter++)
+			{
+				if (FriendAccountNo == AccountIter->second->AccountNo)
+				{
+					if (AddFriendRequest(ToAccountNo, FriendAccountNo))
+					{
+						byResult = df_RESULT_FRIEND_REQUEST_OK;
+					}	
+				}
+			}
+		}
+	}
+
+	Send_ResFriendRequest(pclient, FriendAccountNo, byResult);
+
+	return TRUE;
 }
 
 BOOL netPacket_ReqFriendCancel(st_CLIENT *pclient, CProtocolBuffer *pPacket)
@@ -702,10 +796,12 @@ void Send_ResFriendList(st_CLIENT * pClient)
 	SendUnicast(pClient, &stHeader, &Packet);
 }
 
-void Send_ResFriendRequestList(st_CLIENT * pClient)
+void Send_ResFriendList_Request(st_CLIENT * pClient)
 {
 	st_PACKET_HEADER	stHeader;
 	CProtocolBuffer		Packet;
+
+	makePacket_ResFriendList_Request(&stHeader, &Packet, pClient->pAccount);
 
 	SendUnicast(pClient, &stHeader, &Packet);
 }
@@ -714,6 +810,8 @@ void Send_ResFriendList_Reply(st_CLIENT * pClient)
 {
 	st_PACKET_HEADER	stHeader;
 	CProtocolBuffer		Packet;
+
+	makePacket_ResFriendList_Reply(&stHeader, &Packet, pClient->pAccount);
 
 	SendUnicast(pClient, &stHeader, &Packet);
 }
@@ -726,10 +824,12 @@ void Send_ResFriendRemove(st_CLIENT * pClient)
 	SendUnicast(pClient, &stHeader, &Packet);
 }
 
-void Send_ResFriendRequest(st_CLIENT * pClient, BYTE byResult)
+void Send_ResFriendRequest(st_CLIENT * pClient, UINT64 AccountNo, BYTE byResult)
 {
 	st_PACKET_HEADER	stHeader;
 	CProtocolBuffer		Packet;
+
+	makePacket_ResFriendRequest(&stHeader, &Packet, AccountNo, byResult);
 
 	SendUnicast(pClient, &stHeader, &Packet);
 }
@@ -843,7 +943,7 @@ void makePacket_ResFriendList(st_PACKET_HEADER *pHeader, CProtocolBuffer * pPack
 	else
 	{
 		UINT64 IndexKey = pAccount->AccountNo;
-		int iKeyCount = 0;
+		UINT64 iKeyCount = 0;
 
 		iKeyCount = g_FriendIndex_To.count(IndexKey) + g_FriendIndex_From.count(IndexKey);
 
@@ -869,7 +969,7 @@ void makePacket_ResFriendList(st_PACKET_HEADER *pHeader, CProtocolBuffer * pPack
 		{
 			st_DATA_FRIEND *pFriend;
 
-			UINT MapKey = IndexIter->second;
+			UINT64 MapKey = IndexIter->second;
 
 			FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
 			FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
@@ -879,8 +979,8 @@ void makePacket_ResFriendList(st_PACKET_HEADER *pHeader, CProtocolBuffer * pPack
 				pFriend = MapIter->second;
 
 				(*pPacket) << pFriend->FromAccountNo;
+				pPacket->PutData((char*)g_AccountMap[pFriend->FromAccountNo]->szID, dfNICK_MAX_LEN);
 			}
-
 		}
 	}
 
@@ -890,37 +990,97 @@ void makePacket_ResFriendList(st_PACKET_HEADER *pHeader, CProtocolBuffer * pPack
 	pHeader->wPayloadSize	= pPacket->GetDataSize();
 }
 
-void makePacket_ResFriendRequestList(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+void makePacket_ResFriendList_Request(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, st_DATA_ACCOUNT *pAccount)
+{
+	pPacket->Clear();
+
+	if (nullptr == pAccount)
+	{
+		(*pPacket) << (int)0;
+	}
+	else
+	{
+		UINT64 IndexKey = pAccount->AccountNo;
+		UINT64 iKeyCount = 0;
+
+		iKeyCount = g_FriendIndex_To.count(IndexKey) + g_FriendIndex_From.count(IndexKey);
+
+		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
+
+		FriendToIter_Lower = g_FriendIndex_To.lower_bound(IndexKey);
+		FriendToIter_Upper = g_FriendIndex_To.upper_bound(IndexKey);
+
+		multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
+
+		FriendFromIter_Lower = g_FriendIndex_From.lower_bound(IndexKey);
+		FriendFromIter_Upper = g_FriendIndex_From.upper_bound(IndexKey);
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Lower;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Upper;
+
+		multimap<UINT64, UINT64>::iterator IndexIter;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator MapIter;
+
+		for (IndexIter = FriendToIter_Lower; IndexIter != FriendToIter_Upper; IndexIter++)
+		{
+			st_DATA_FRIEND *pFriend;
+
+			UINT64 MapKey = IndexIter->second;
+
+			FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
+			FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
+
+			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+			{
+				pFriend = MapIter->second;
+
+				(*pPacket) << pFriend->FromAccountNo;
+				pPacket->PutData((char*)g_AccountMap[pFriend->FromAccountNo]->szID, dfNICK_MAX_LEN);
+			}
+		}
+	}
+
+	// 헤더 입력
+	pHeader->byCode = dfPACKET_CODE;
+	pHeader->wMsgType = df_RES_FRIEND_LIST;
+	pHeader->wPayloadSize = pPacket->GetDataSize();
+}
+
+void makePacket_ResFriendList_Reply(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, st_DATA_ACCOUNT *pAccount)
 {
 
 }
 
-void makePacket_ResFriendList_Reply(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+void makePacket_ResFriendRemove(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket)
 {
 
 }
 
-void makePacket_ResFriendRemove(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+void makePacket_ResFriendRequest(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, UINT64 FriendAccountNo, BYTE byResult)
+{
+	pPacket->Clear();
+
+	(*pPacket) << FriendAccountNo;
+	(*pPacket) << byResult;
+
+	pHeader->byCode			= dfPACKET_CODE;
+	pHeader->wMsgType		= df_RES_FRIEND_REQUEST;
+	pHeader->wPayloadSize	= pPacket->GetDataSize();
+}
+
+void makePacket_ResFriendCancel(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket)
 {
 
 }
 
-void makePacket_FriendRequest(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+void makePacket_ResFriendDeny(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket)
 {
 
 }
 
-void makePacket_ResFriendCancel(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
-{
-
-}
-
-void makePacket_ResFriendDeny(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
-{
-
-}
-
-void makePacket_ResFriendAgree(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+void makePacket_ResFriendAgree(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket)
 {
 
 }
@@ -930,7 +1090,7 @@ void makePacket_ResFriendAgree(st_PACKET_HEADER * pHeader, CProtocolBuffer * pPa
 //			특정 클라이언트에게 보내기
 //
 ////////////////////////////////////////////////////////////
-void SendUnicast(st_CLIENT * pClient, st_PACKET_HEADER * pHeader, CProtocolBuffer * pPacket)
+void SendUnicast(st_CLIENT * pClient, st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket)
 {
 	if (nullptr == pClient)
 	{
@@ -940,5 +1100,30 @@ void SendUnicast(st_CLIENT * pClient, st_PACKET_HEADER * pHeader, CProtocolBuffe
 	char* chpTemp = pPacket->GetBufferPtr();
 
 	pClient->SendQ.Put( ( char* )pHeader, sizeof( st_PACKET_HEADER ) );
-	pClient->SendQ.Put( (char*)pPacket->GetBufferPtr(), pPacket->GetDataSize() );
+	pClient->SendQ.Put( ( char* )pPacket->GetBufferPtr(), pPacket->GetDataSize() );
+}
+
+BOOL AddFriendRequest(UINT64 FromAccountNo, UINT64 ToAccountNo)
+{
+	st_DATA_FRIEND_REQUEST *pFriendRequest = new st_DATA_FRIEND_REQUEST;
+
+	pFriendRequest->FromAccountNo	= FromAccountNo;
+	pFriendRequest->ToAccountNo		= ToAccountNo;
+	
+	pFriendRequest->No				= g_FriendRequestIncrement;
+	g_FriendRequestIncrement++;
+
+	g_FriendRequestMap.insert(
+		pair<UINT64, st_DATA_FRIEND_REQUEST*>(pFriendRequest->No, pFriendRequest)
+	);
+
+	g_FriendRequestIndex_From.insert(
+		pair<UINT64, UINT64>(FromAccountNo, pFriendRequest->No)
+	);
+
+	g_FriendRequestIndex_To.insert(
+		pair<UINT64, UINT64>(ToAccountNo, pFriendRequest->No)
+	);
+
+	return TRUE;
 }

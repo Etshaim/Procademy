@@ -47,7 +47,7 @@ struct st_DATA_FRIEND_REQUEST
 // 네트워크 초기화
 BOOL	NetworkInitial(void);
 void	NetworkProcess(void);
-void	SelectSocket(DWORD *dwpTableNO, SOCKET *pTableSocket, FD_SET *pReadSet, FD_SET *pWriteSet);
+void	SelectSocket(UINT64 *dwpTableNO, SOCKET *pTableSocket, FD_SET *pReadSet, FD_SET *pWriteSet);
 
 // 오류 출력
 void	err_quit(WCHAR *msg);
@@ -95,11 +95,11 @@ void	Send_ResLogin(st_CLIENT *pClient);			//회원 로그인 			결과(RES)
 void	Send_ResAccountList(st_CLIENT *pClient);					//회원 리스트 			결과(RES)
 
 void	Send_ResFriendList(st_CLIENT *pClient);						//친구 목록 			결과(RES)
-void	Send_ResFriendRequestList(st_CLIENT *pClient);				//보낸 친구요청 목록 	결과(RES)
+void	Send_ResFriendList_Request(st_CLIENT *pClient);				//보낸 친구요청 목록 	결과(RES)
 void 	Send_ResFriendList_Reply(st_CLIENT *pclient);				//받은 친구요청 목록 	결과(RES)
 
 void	Send_ResFriendRemove(st_CLIENT *pClient);					//친구 끊기 			결과(RES)
-void	Send_ResFriendRequest(st_CLIENT *pclient, BYTE byResult);	//친구 요청 			결과(RES)
+void	Send_ResFriendRequest(st_CLIENT *pclient, UINT64 AccountNo, BYTE byResult);	//친구 요청 			결과(RES)
 void	Send_ResFriendCancel(st_CLIENT *pClient);					//친구 요청 취소 		결과(RES)
 
 void	Send_ResFriendDeny(st_CLIENT *pClient);						//친구 요청 거부 		결과(RES)
@@ -112,11 +112,11 @@ void	makePacket_ResLogin(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, st
 void	makePacket_ResAccountList(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
 
 void	makePacket_ResFriendList(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, st_DATA_ACCOUNT *pAccount);
-void	makePacket_ResFriendRequestList(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
-void	makePacket_ResFriendList_Reply(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
+void	makePacket_ResFriendList_Request(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, st_DATA_ACCOUNT *pAccount);
+void	makePacket_ResFriendList_Reply(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, st_DATA_ACCOUNT *pAccount);
 
 void	makePacket_ResFriendRemove(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
-void	makePacket_FriendRequest(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
+void	makePacket_ResFriendRequest(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, UINT64 FriendAccountNo, BYTE byResult);
 void	makePacket_ResFriendCancel(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
 
 void	makePacket_ResFriendDeny(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket);
@@ -125,3 +125,6 @@ void	makePacket_ResFriendAgree(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPack
 // 특정 클라이언트에게 보내기
 void	SendUnicast(st_CLIENT *pClient, st_PACKET_HEADER *pHeader, 
 	CProtocolBuffer *pPacket);
+
+// 친구 요청 추가
+BOOL	AddFriendRequest(UINT64 FromAccountNo, UINT64 ToAccountNo);
