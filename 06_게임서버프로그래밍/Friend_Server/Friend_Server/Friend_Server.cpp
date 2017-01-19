@@ -621,6 +621,8 @@ BOOL netPacket_ReqFriendList_Request(st_CLIENT * pClient, CProtocolBuffer *pPack
 
 BOOL netPacket_ReqFriendList_Reply(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 {
+	Send_ResFriendList_Reply(pclient);
+
 	return TRUE;
 }
 
@@ -640,22 +642,22 @@ BOOL netPacket_ReqFriendRequest(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 	if (nullptr != pclient->pAccount)
 	{
 		// 이미 친구인지 확인
-		UINT64 ToAccountNo	= pclient->pAccount->AccountNo;
-		UINT64 iKeyCount	= 0;
+		UINT64 FromAccountNo	= pclient->pAccount->AccountNo;
+		UINT64 iKeyCount		= 0;
 
-		iKeyCount = g_FriendIndex_To.count(ToAccountNo) + g_FriendIndex_From.count(ToAccountNo);
+		iKeyCount = g_FriendIndex_To.count(FromAccountNo) + g_FriendIndex_From.count(FromAccountNo);
 
 		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
 		multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
 
-		FriendToIter_Lower = g_FriendIndex_To.lower_bound(ToAccountNo);
-		FriendToIter_Upper = g_FriendIndex_To.upper_bound(ToAccountNo);
+		FriendToIter_Lower = g_FriendIndex_To.lower_bound(FromAccountNo);
+		FriendToIter_Upper = g_FriendIndex_To.upper_bound(FromAccountNo);
 
 		multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
 		multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
 
-		FriendFromIter_Lower = g_FriendIndex_From.lower_bound(ToAccountNo);
-		FriendFromIter_Upper = g_FriendIndex_From.upper_bound(ToAccountNo);
+		FriendFromIter_Lower = g_FriendIndex_From.lower_bound(FromAccountNo);
+		FriendFromIter_Upper = g_FriendIndex_From.upper_bound(FromAccountNo);
 
 		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Lower;
 		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Upper;
@@ -711,9 +713,15 @@ BOOL netPacket_ReqFriendRequest(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 
 			for (AccountIter = g_AccountMap.begin(); AccountIter != g_AccountMap.end(); AccountIter++)
 			{
+				// 만약 자기 자신에게 친구 요청했을 경우 찾지 못했다고 처리
+				if (FriendAccountNo == FromAccountNo)
+				{
+					continue;
+				}
+
 				if (FriendAccountNo == AccountIter->second->AccountNo)
 				{
-					if (AddFriendRequest(ToAccountNo, FriendAccountNo))
+					if (AddFriendRequest(FromAccountNo, FriendAccountNo))
 					{
 						byResult = df_RESULT_FRIEND_REQUEST_OK;
 					}	
@@ -739,6 +747,11 @@ BOOL netPacket_ReqFriendDeny(st_CLIENT *pclient, CProtocolBuffer *pPacket)
 
 BOOL netPacket_ReqFriendAgree(st_CLIENT *pclient, CProtocolBuffer *pPacket)
 {
+	UINT64	FriendAccountNo;
+	
+	(*pPacket) >> FriendAccountNo;
+
+
 	return TRUE;
 }
 
@@ -1003,14 +1016,9 @@ void makePacket_ResFriendList_Request(st_PACKET_HEADER *pHeader, CProtocolBuffer
 		UINT64 IndexKey = pAccount->AccountNo;
 		UINT64 iKeyCount = 0;
 
-		iKeyCount = g_FriendRequestIndex_To.count(IndexKey) + g_FriendRequestIndex_From.count(IndexKey);
+		iKeyCount = g_FriendRequestIndex_From.count(IndexKey);
 		(*pPacket) << (UINT)iKeyCount;
 
-		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
-		multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
-
-		FriendToIter_Lower = g_FriendRequestIndex_To.lower_bound(IndexKey);
-		FriendToIter_Upper = g_FriendRequestIndex_To.upper_bound(IndexKey);
 
 		multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
 		multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
@@ -1023,24 +1031,6 @@ void makePacket_ResFriendList_Request(st_PACKET_HEADER *pHeader, CProtocolBuffer
 
 		multimap<UINT64, UINT64>::iterator IndexIter;
 		multimap<UINT64, st_DATA_FRIEND_REQUEST*>::iterator MapIter;
-
-		for (IndexIter = FriendToIter_Lower; IndexIter != FriendToIter_Upper; IndexIter++)
-		{
-			st_DATA_FRIEND_REQUEST *pFriend;
-
-			UINT64 MapKey = IndexIter->second;
-
-			FriendIter_Lower = g_FriendRequestMap.lower_bound(MapKey);
-			FriendIter_Upper = g_FriendRequestMap.upper_bound(MapKey);
-
-			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
-			{
-				pFriend = MapIter->second;
-
-				(*pPacket) << pFriend->FromAccountNo;
-				pPacket->PutData((char*)g_AccountMap[pFriend->FromAccountNo]->szID, dfNICK_MAX_LEN * sizeof(WCHAR));
-			}
-		}
 
 		for (IndexIter = FriendFromIter_Lower; IndexIter != FriendFromIter_Upper; IndexIter++)
 		{
@@ -1080,7 +1070,7 @@ void makePacket_ResFriendList_Reply(st_PACKET_HEADER *pHeader, CProtocolBuffer *
 		UINT64 IndexKey = pAccount->AccountNo;
 		UINT64 iKeyCount = 0;
 
-		iKeyCount = g_FriendRequestIndex_To.count(IndexKey) + g_FriendRequestIndex_From.count(IndexKey);
+		iKeyCount = g_FriendRequestIndex_To.count(IndexKey);
 		(*pPacket) << (UINT)iKeyCount;
 
 		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
@@ -1088,12 +1078,6 @@ void makePacket_ResFriendList_Reply(st_PACKET_HEADER *pHeader, CProtocolBuffer *
 
 		FriendToIter_Lower = g_FriendRequestIndex_To.lower_bound(IndexKey);
 		FriendToIter_Upper = g_FriendRequestIndex_To.upper_bound(IndexKey);
-
-		multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
-		multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
-
-		FriendFromIter_Lower = g_FriendRequestIndex_From.lower_bound(IndexKey);
-		FriendFromIter_Upper = g_FriendRequestIndex_From.upper_bound(IndexKey);
 
 		multimap<UINT64, st_DATA_FRIEND_REQUEST*>::iterator FriendIter_Lower;
 		multimap<UINT64, st_DATA_FRIEND_REQUEST*>::iterator FriendIter_Upper;
@@ -1118,29 +1102,11 @@ void makePacket_ResFriendList_Reply(st_PACKET_HEADER *pHeader, CProtocolBuffer *
 				pPacket->PutData((char*)g_AccountMap[pFriend->FromAccountNo]->szID, dfNICK_MAX_LEN * sizeof(WCHAR));
 			}
 		}
-
-		for (IndexIter = FriendFromIter_Lower; IndexIter != FriendFromIter_Upper; IndexIter++)
-		{
-			st_DATA_FRIEND_REQUEST *pFriend;
-
-			UINT64 MapKey = IndexIter->second;
-
-			FriendIter_Lower = g_FriendRequestMap.lower_bound(MapKey);
-			FriendIter_Upper = g_FriendRequestMap.upper_bound(MapKey);
-
-			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
-			{
-				pFriend = MapIter->second;
-
-				(*pPacket) << pFriend->ToAccountNo;
-				pPacket->PutData((char*)g_AccountMap[pFriend->ToAccountNo]->szID, dfNICK_MAX_LEN * sizeof(WCHAR));
-			}
-		}
 	}
 
 	// 헤더 입력
 	pHeader->byCode			= dfPACKET_CODE;
-	pHeader->wMsgType		= df_RES_FRIEND_REQUEST_LIST;
+	pHeader->wMsgType		= df_RES_FRIEND_REPLY_LIST;
 	pHeader->wPayloadSize	= pPacket->GetDataSize();
 }
 
