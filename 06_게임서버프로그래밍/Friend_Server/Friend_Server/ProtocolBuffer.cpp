@@ -233,6 +233,12 @@ CProtocolBuffer&	CProtocolBuffer::operator << (int iValue)
 
 	return *this;
 }
+CProtocolBuffer & CProtocolBuffer::operator<<(UINT iValue)
+{
+	PutData((char*)&iValue, sizeof(UINT));
+
+	return *this;
+}
 CProtocolBuffer&	CProtocolBuffer::operator << (DWORD dwValue)
 {
 	PutData((char*)&dwValue, sizeof(DWORD));
@@ -298,6 +304,12 @@ CProtocolBuffer&	CProtocolBuffer::operator >> (WORD &wValue)
 CProtocolBuffer&	CProtocolBuffer::operator >> (int &iValue)
 {
 	GetData((char*)&iValue, sizeof(int));
+
+	return *this;
+}
+CProtocolBuffer & CProtocolBuffer::operator >> (UINT & iValue)
+{
+	GetData((char*)&iValue, sizeof(UINT));
 
 	return *this;
 }
