@@ -619,19 +619,19 @@ BOOL netPacket_ReqFriendList_Request(st_CLIENT * pClient, CProtocolBuffer *pPack
 	return TRUE;
 }
 
-BOOL netPacket_ReqFriendList_Reply(st_CLIENT * pclient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqFriendList_Reply(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
-	Send_ResFriendList_Reply(pclient);
+	Send_ResFriendList_Reply(pClient);
 
 	return TRUE;
 }
 
-BOOL netPacket_ReqFriendRemove(st_CLIENT * pclient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqFriendRemove(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
 	return TRUE;
 }
 
-BOOL netPacket_ReqFriendRequest(st_CLIENT * pclient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqFriendRequest(st_CLIENT * pClient, CProtocolBuffer *pPacket)
 {
 	UINT64	FriendAccountNo = 0;
 	BYTE	byResult		= df_RESULT_FRIEND_REQUEST_NOTFOUND;
@@ -639,10 +639,10 @@ BOOL netPacket_ReqFriendRequest(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 	(*pPacket) >> FriendAccountNo;
 
 	// 로그인이 되었는지 확인
-	if (nullptr != pclient->pAccount)
+	if (nullptr != pClient->pAccount)
 	{
 		// 이미 친구인지 확인
-		UINT64 FromAccountNo	= pclient->pAccount->AccountNo;
+		UINT64 FromAccountNo	= pClient->pAccount->AccountNo;
 		UINT64 iKeyCount		= 0;
 
 		iKeyCount = g_FriendIndex_To.count(FromAccountNo) + g_FriendIndex_From.count(FromAccountNo);
@@ -730,27 +730,80 @@ BOOL netPacket_ReqFriendRequest(st_CLIENT * pclient, CProtocolBuffer *pPacket)
 		}
 	}
 
-	Send_ResFriendRequest(pclient, FriendAccountNo, byResult);
+	Send_ResFriendRequest(pClient, FriendAccountNo, byResult);
 
 	return TRUE;
 }
 
-BOOL netPacket_ReqFriendCancel(st_CLIENT *pclient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqFriendCancel(st_CLIENT *pClient, CProtocolBuffer *pPacket)
 {
+
 	return TRUE;
 }
 
-BOOL netPacket_ReqFriendDeny(st_CLIENT *pclient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqFriendDeny(st_CLIENT *pClient, CProtocolBuffer *pPacket)
 {
+
+
 	return TRUE;
 }
 
-BOOL netPacket_ReqFriendAgree(st_CLIENT *pclient, CProtocolBuffer *pPacket)
+BOOL netPacket_ReqFriendAgree(st_CLIENT *pClient, CProtocolBuffer *pPacket)
 {
-	UINT64	FriendAccountNo;
+	UINT64	ToAccountNo		= pClient->pAccount->AccountNo;
+
+	// 수락할 계정, 이 클라이언트에게 친구 요청한 계정
+	UINT64	FromAccountNo	= 0;
 	
-	(*pPacket) >> FriendAccountNo;
+	BYTE	byResult = df_RESULT_FRIEND_AGREE_NOTFRIEND;
 
+	(*pPacket) >> FromAccountNo;
+
+	// 이미 친구라면
+	if ( CheckFriendBetween(FromAccountNo, ToAccountNo) )
+	{
+		byResult = df_RESULT_FRIEND_AGREE_FAIL;
+	}
+	else
+	{
+		// 친구 요청 맵을 뒤져서 해당 클라에게 온 친구 요청을 다 찾는다
+		multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
+		multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
+		
+		FriendToIter_Lower = g_FriendRequestIndex_To.lower_bound(ToAccountNo);
+		FriendToIter_Upper = g_FriendRequestIndex_To.upper_bound(ToAccountNo);
+
+		multimap<UINT64, UINT64>::iterator IndexIter;
+
+		// key값을 찾고
+		for (IndexIter = FriendToIter_Lower; IndexIter != FriendToIter_Upper; IndexIter++)
+		{
+			st_DATA_FRIEND_REQUEST *pFriendRequest;
+
+			// 친구 요청 multimap의 키 값
+			UINT64 MapKey = IndexIter->second;
+
+			multimap<UINT64, st_DATA_FRIEND_REQUEST*>::iterator FriendIter_Lower;
+			multimap<UINT64, st_DATA_FRIEND_REQUEST*>::iterator FriendIter_Upper;
+
+			FriendIter_Lower = g_FriendRequestMap.lower_bound(MapKey);
+			FriendIter_Upper = g_FriendRequestMap.upper_bound(MapKey);
+
+			multimap<UINT64, st_DATA_FRIEND_REQUEST*>::iterator MapIter;
+
+			for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+			{
+				pFriendRequest = MapIter->second;
+
+				if (pFriendRequest->FromAccountNo == FromAccountNo)
+				{
+					byResult = df_RESULT_FRIEND_AGREE_OK;
+				}
+			}
+		}
+	}
+
+	Send_ResFriendAgree(pClient, FromAccountNo, byResult);
 
 	return TRUE;
 }
@@ -863,10 +916,12 @@ void Send_ResFriendDeny(st_CLIENT * pClient)
 	SendUnicast(pClient, &stHeader, &Packet);
 }
 
-void Send_ResFriendAgree(st_CLIENT * pClient, BYTE byResult)
+void Send_ResFriendAgree(st_CLIENT * pClient, UINT64 FriendAccount, BYTE byResult)
 {
 	st_PACKET_HEADER	stHeader;
 	CProtocolBuffer		Packet;
+
+	makePacket_ResFriendAgree(&stHeader, &Packet, FriendAccount, byResult);
 
 	SendUnicast(pClient, &stHeader, &Packet);
 }
@@ -1137,8 +1192,16 @@ void makePacket_ResFriendDeny(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacke
 
 }
 
-void makePacket_ResFriendAgree(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket)
+void makePacket_ResFriendAgree(st_PACKET_HEADER *pHeader, CProtocolBuffer *pPacket, UINT64 FriendAccountNo, BYTE byResult)
 {
+	pPacket->Clear();
+
+	(*pPacket) << FriendAccountNo;
+	(*pPacket) << byResult;
+
+	pHeader->byCode			= dfPACKET_CODE;
+	pHeader->wMsgType		= df_RES_FRIEND_AGREE;
+	pHeader->wPayloadSize	= pPacket->GetDataSize();
 
 }
 
@@ -1183,4 +1246,77 @@ BOOL AddFriendRequest(UINT64 FromAccountNo, UINT64 ToAccountNo)
 	);
 
 	return TRUE;
+}
+
+BOOL CheckFriendBetween(UINT64 FromAccountNo, UINT64 ToAccountNo)
+{
+	multimap<UINT64, UINT64>::iterator FriendToIter_Lower;
+	multimap<UINT64, UINT64>::iterator FriendToIter_Upper;
+
+	FriendToIter_Lower = g_FriendIndex_To.lower_bound(ToAccountNo);
+	FriendToIter_Upper = g_FriendIndex_To.upper_bound(ToAccountNo);
+
+	multimap<UINT64, UINT64>::iterator FriendFromIter_Lower;
+	multimap<UINT64, UINT64>::iterator FriendFromIter_Upper;
+
+	FriendFromIter_Lower = g_FriendIndex_From.lower_bound(FromAccountNo);
+	FriendFromIter_Upper = g_FriendIndex_From.upper_bound(FromAccountNo);
+
+	
+
+	multimap<UINT64, UINT64>::iterator IndexIter;
+	
+	// 둘 중에 하나만 검사해보면 됨
+	for (IndexIter = FriendToIter_Lower; IndexIter != FriendToIter_Upper; IndexIter++)
+	{
+		st_DATA_FRIEND *pFriend;
+
+		UINT64 MapKey = IndexIter->second;
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Lower;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Upper;
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator MapIter;
+
+		FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
+		FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
+
+		for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+		{
+			pFriend = MapIter->second;
+
+			if (pFriend->FromAccountNo == FromAccountNo)
+			{
+				return TRUE;
+			}
+		}
+	}
+
+	// 둘 중에 하나만 검사해보면 됨
+	for (IndexIter = FriendFromIter_Lower; IndexIter != FriendFromIter_Lower; IndexIter++)
+	{
+		st_DATA_FRIEND *pFriend;
+
+		UINT64 MapKey = IndexIter->second;
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Lower;
+		multimap<UINT64, st_DATA_FRIEND*>::iterator FriendIter_Upper;
+
+		multimap<UINT64, st_DATA_FRIEND*>::iterator MapIter;
+
+		FriendIter_Lower = g_FriendMap.lower_bound(MapKey);
+		FriendIter_Upper = g_FriendMap.upper_bound(MapKey);
+
+		for (MapIter = FriendIter_Lower; MapIter != FriendIter_Upper; MapIter++)
+		{
+			pFriend = MapIter->second;
+
+			if (pFriend->ToAccountNo == ToAccountNo)
+			{
+				return TRUE;
+			}
+		}
+	}
+
+	return FALSE;
 }
